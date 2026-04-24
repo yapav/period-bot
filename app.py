@@ -18,31 +18,6 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 app = Flask(__name__)
 
-# Initialize DB immediately on startup (before any requests)
-def get_db():
-    conn = sqlite3.connect("period_bot.db")
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    conn = get_db()
-    conn.execute("""CREATE TABLE IF NOT EXISTS users (
-        user_id TEXT PRIMARY KEY, display_name TEXT, created_at TEXT)""")
-    conn.execute("""CREATE TABLE IF NOT EXISTS periods (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT, start_date TEXT, end_date TEXT, notes TEXT)""")
-    conn.execute("""CREATE TABLE IF NOT EXISTS daily_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT, log_date TEXT, flow_level TEXT, symptoms TEXT,
-        UNIQUE(user_id, log_date))""")
-    conn.execute("""CREATE TABLE IF NOT EXISTS chat_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT, role TEXT, content TEXT, created_at TEXT)""")
-    conn.commit()
-    conn.close()
-
-init_db()  # Run immediately on startup
-
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
@@ -110,6 +85,10 @@ def get_cycle_phase(day_of_cycle, cycle_length=28):
         "emoji": "⚡"
     }
 
+# ==============================
+# DATABASE
+# ==============================
+
 def get_db():
     conn = sqlite3.connect("period_bot.db")
     conn.row_factory = sqlite3.Row
@@ -131,6 +110,13 @@ def init_db():
         user_id TEXT, role TEXT, content TEXT, created_at TEXT)""")
     conn.commit()
     conn.close()
+
+# สร้าง DB ทันทีตอน startup
+init_db()
+
+# ==============================
+# DB HELPERS
+# ==============================
 
 def upsert_user(user_id, display_name=""):
     conn = get_db()
@@ -267,11 +253,11 @@ def build_calendar_text(user_id):
         if i < len(periods) - 1:
             prev_start = datetime.strptime(periods[i+1]["start_date"], "%Y-%m-%d")
             gap = (start - prev_start).days
-            gap_str = f"   ← ห่างจากรอบก่อน {gap} วัน"
+            gap_str = f"\n   ← ห่างจากรอบก่อน {gap} วัน"
         else:
             gap_str = ""
         label = "🔴 ล่าสุด" if i == 0 else f"รอบที่ -{i}"
-        lines.append(f"\n{label}\n🗓 {start.strftime('%d %b %Y')} – {end_str} {dur_str}{chr(10) + gap_str if gap_str else ''}")
+        lines.append(f"\n{label}\n🗓 {start.strftime('%d %b %Y')} – {end_str} {dur_str}{gap_str}")
     next_date = predict_next_period(user_id)
     if next_date:
         days_left = (next_date - datetime.now()).days
@@ -284,7 +270,11 @@ def build_calendar_text(user_id):
             lines.append(f"🔮 ผ่านกำหนดมาแล้ว {abs(days_left)} วัน\n   ถ้ามาแล้วบอกพี่สาวด้วยนะ!")
     return "\n".join(lines)
 
-SYSTEM_PROMPT = """คุณคือ "พี่สาว" แชทบอทผู้ช่วยติดตามรอบเดือนที่ที่ดูแลและห่วงใยผู้ใช้เหมือนพี่สาวคนจริงๆ
+# ==============================
+# CLAUDE AI
+# ==============================
+
+SYSTEM_PROMPT = """คุณคือ "พี่สาว" แชทบอทผู้ช่วยติดตามรอบเดือนที่ดูแลและห่วงใยผู้ใช้เหมือนพี่สาวคนจริงๆ
 พูดคุยเป็นกันเองแบบพี่สาวที่ห่วงใย ใช้ภาษาไทยน่ารักๆ ไม่เป็นทางการ อบอุ่น และเอาใจใส่
 
 คำสั่งพิเศษ (return JSON เท่านั้น ห้ามมีข้อความอื่น):
@@ -392,6 +382,10 @@ def process_claude_response(user_id, response_text):
         pass
     return response_text
 
+# ==============================
+# LINE WEBHOOK
+# ==============================
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     signature = request.headers.get("X-Line-Signature", "")
@@ -422,6 +416,10 @@ def handle_message(event):
             )
         )
 
+# ==============================
+# SCHEDULED NOTIFICATIONS
+# ==============================
+
 def send_push_message(user_id, message):
     try:
         with ApiClient(configuration) as api_client:
@@ -449,7 +447,6 @@ def daily_check_and_notify():
             day_of_cycle = (today - start_date).days + 1
 
             if latest["end_date"] is None:
-                # กำลังมีเมนส์อยู่
                 daily_msgs = [
                     "",
                     f"วันที่ {day_of_cycle} แล้วนะ! 🩸 วันนี้เป็นยังไงบ้าง มาเยอะหรือน้อยคะ?",
@@ -463,9 +460,7 @@ def daily_check_and_notify():
                 if 1 <= day_of_cycle < len(daily_msgs):
                     send_push_message(user_id, daily_msgs[day_of_cycle])
             else:
-                # ไม่ได้มีเมนส์ → เช็คไข่ตกและ PMS
                 ovulation_day = avg - 14
-
                 if day_of_cycle == ovulation_day - 1:
                     send_push_message(user_id,
                         "🥚 พรุ่งนี้น่าจะเป็นช่วงที่ไข่ตกนะ!\n"
@@ -507,7 +502,6 @@ def run_scheduler():
         time.sleep(60)
 
 if __name__ == "__main__":
-    init_db()
     threading.Thread(target=run_scheduler, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
