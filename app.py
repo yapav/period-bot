@@ -293,7 +293,7 @@ def chat_with_claude(user_id, user_message):
     messages = [{"role": r["role"], "content": r["content"]} for r in history]
     messages.append({"role": "user", "content": user_message})
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-5",
         max_tokens=500,
         system=SYSTEM_PROMPT,
         messages=messages
