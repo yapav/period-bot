@@ -39,12 +39,6 @@ def get_current_price():
     return NORMAL_PRICE, False
 
 
-PACKAGES = {
-    "1": {"name": "1 เดือน", "price": 29, "days": 30},
-    "2": {"name": "6 เดือน", "price": 149, "days": 180},
-    "3": {"name": "12 เดือน", "price": 249, "days": 365},
-}
-
 PERIOD_DAY1_QUOTES = [
     "อุ๊ย มาแล้วนะ 🩸 ปวดท้องมั้ยคะ? ถ้ามีช็อกโกแลตอุ่นๆให้ดื่มคงดีเนอะ 🍫",
     "มาแล้วววว สู้ๆนะ! 💪 วันนี้ใจดีกับตัวเองด้วยนะ พักเยอะๆได้เลย",
@@ -571,41 +565,48 @@ def process_claude_response(user_id, response_text):
             return get_upsell_message()
 
         elif action == "upgrade":
-            return """ยินดีเลยนะคะ! 🎉
-
-เลือกแพคเกจได้เลยนะคะ
-1️⃣  1 เดือน — 29 บาท
-2️⃣  6 เดือน — 149 บาท (ประหยัด 25 บาท)
-3️⃣ 12 เดือน — 249 บาท (ประหยัด 99 บาท)
-
-ไม่ผูกมัดนะคะ จะหยุดเดือนไหนก็ได้เลย 🌸
-พิมพ์ 1, 2 หรือ 3 เพื่อเลือกแพคเกจได้เลยนะคะ 💙"""
+            price, is_early = get_current_price()
+            if is_early:
+                return (
+                    "ยินดีเลยนะคะ! 🎉\n\n"
+                    f"Early Bird — unlock ตลอดชีพแค่ {price} บาท 🎊\n"
+                    f"(ราคาปกติ {NORMAL_PRICE} บาท หมดเขต 31 พ.ค. นี้เท่านั้น)\n\n"
+                    "จ่ายครั้งเดียว ใช้ได้ตลอด ไม่มีรายเดือนนะคะ 🌸\n"
+                    "สนใจพิมพ์ 'จ่ายเลย' ได้เลยนะคะ 💙"
+                )
+            else:
+                return (
+                    "ยินดีเลยนะคะ! 🎉\n\n"
+                    f"Unlock พี่สาว ตลอดชีพแค่ {price} บาท ✨\n"
+                    "จ่ายครั้งเดียว ใช้ได้ตลอด ไม่มีรายเดือนนะคะ 🌸\n"
+                    "สนใจพิมพ์ 'จ่ายเลย' ได้เลยนะคะ 💙"
+                )
 
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # เช็คว่าเป็นการเลือกแพคเกจมั้ย
-    if response_text.strip() in ["1", "2", "3"]:
-        pkg = PACKAGES.get(response_text.strip())
-        if pkg:
-            conn = get_db()
-            conn.execute("INSERT INTO payment_requests (user_id, package, amount, created_at) VALUES (?, ?, ?, ?)",
-                         (user_id, pkg["name"], pkg["price"], datetime.now().isoformat()))
-            conn.commit()
-            conn.close()
-            notify_admin(
-                f"💰 มีคนอยากอัพเกรด!\n"
-                f"User: {user_id}\n"
-                f"แพคเกจ: {pkg['name']} — {pkg['price']} บาท\n"
-                f"approve: /approve {user_id} {pkg['days']}"
-            )
-            return f"""เลือก {pkg['name']} {pkg['price']} บาทแล้วนะคะ 🌸
-
-โอนมาที่ PromptPay: [ใส่เบอร์หรือเลขบัตรของเรา]
-ยอด: {pkg['price']} บาท
-
-แล้วส่งสลิปมาในแชทนี้ได้เลยนะคะ 💙
-พี่สาวจะเปิดใช้งานให้ภายใน 24 ชั่วโมงนะคะ"""
+    # เช็คว่าพิมพ์จ่ายเลยมั้ย
+    if response_text.strip() in ["จ่ายเลย", "สนใจ", "อยากจ่าย", "จ่าย"]:
+        price, is_early = get_current_price()
+        conn = get_db()
+        conn.execute("INSERT INTO payment_requests (user_id, package, amount, created_at) VALUES (?, ?, ?, ?)",
+                     (user_id, "one-time", price, datetime.now().isoformat()))
+        conn.commit()
+        conn.close()
+        early_label = " (Early Bird)" if is_early else ""
+        notify_admin(
+            f"💰 มีคนอยากอัพเกรด!\n"
+            f"User: {user_id}\n"
+            f"แพคเกจ: One-time{early_label}\n"
+            f"ยอด: {price} บาท\n"
+            f"approve: /approve {user_id}"
+        )
+        return (
+            f"โอนมาที่ PromptPay: [ใส่เบอร์หรือเลขบัตรของเรา]\n"
+            f"ยอด: {price} บาท{early_label}\n\n"
+            f"แล้วส่งสลิปมาในแชทนี้ได้เลยนะคะ 💙\n"
+            f"พี่สาวจะ unlock ให้ภายใน 24 ชั่วโมงนะคะ"
+        )
 
     return response_text
 
@@ -637,6 +638,8 @@ WELCOME_MESSAGE = """สวัสดีนะคะ! พี่สาวยิน
 💑 โหมดแฟน — ให้แฟนดูแลเราได้ด้วย
 
 เดือนพฤษภาคมนี้ใช้ได้ฟรีทุกฟีเจอร์เลยนะคะ 🎉
+หลังจากนั้น unlock ตลอดชีพแค่ 149 บาท
+(ราคา early bird หมดเขต 31 พ.ค. นี้เท่านั้น)
 
 ก่อนเริ่มขอถามหน่อยนะคะ
 ใช้สำหรับใครคะ?
