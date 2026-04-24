@@ -641,7 +641,7 @@ def process_claude_response(user_id, response_text):
             f"approve: /approve {user_id}"
         )
         return (
-            f"โอนมาที่ PromptPay: [ใส่เบอร์หรือเลขบัตรของเรา]\n"
+            f"โอนมาที่ PromptPay: กรุงไทย 6629282752 ชื่อบัญชี ญาภา\n"
             f"ยอด: {price} บาท{early_label}\n\n"
             f"แล้วส่งสลิปมาในแชทนี้ได้เลยนะคะ 💙\n"
             f"พี่สาวจะ unlock ให้ภายใน 24 ชั่วโมงนะคะ"
