@@ -608,6 +608,18 @@ def process_claude_response(user_id, response_text):
             f"พี่สาวจะ unlock ให้ภายใน 24 ชั่วโมงนะคะ"
         )
 
+    # ถ้า response มี JSON หลุดออกมา ให้ลอง parse ก่อน
+    import re
+    json_match = re.search(r'\{[^{}]+\}', response_text)
+    if json_match:
+        try:
+            data = json.loads(json_match.group())
+            if data.get("action"):
+                # มี action JSON หลุดมา ลอง process อีกรอบ
+                cleaned = json_match.group()
+                return process_claude_response(user_id, cleaned)
+        except:
+            pass
     return response_text
 
 # ==============================
@@ -736,7 +748,7 @@ def handle_message(event):
             reply_text = process_claude_response(user_id, msg_lower)
 
         # คำสั่งตรงๆ ที่ไม่ต้องผ่าน Claude
-        elif any(w in user_message for w in ["เมนส์มาแล้ว", "มาแล้ว", "period มา", "มาวันนี้"]):
+        elif any(w in user_message for w in ["เมนส์มาแล้ว", "มาแล้ว", "period มา", "มาวันนี้", "มาเมื่อวาน", "มาวันแรก", "เริ่มมาแล้ว", "เริ่มมาวัน", "มาตั้งแต่"]):
             reply_text = process_claude_response(user_id, '{"action": "start_period"}')
         elif any(w in user_message for w in ["หมดแล้ว", "หยุดแล้ว", "เมนส์หมด", "ไม่มาแล้ว"]):
             reply_text = process_claude_response(user_id, '{"action": "end_period"}')
