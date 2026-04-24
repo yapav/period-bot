@@ -18,6 +18,31 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 app = Flask(__name__)
 
+# Initialize DB immediately on startup (before any requests)
+def get_db():
+    conn = sqlite3.connect("period_bot.db")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db()
+    conn.execute("""CREATE TABLE IF NOT EXISTS users (
+        user_id TEXT PRIMARY KEY, display_name TEXT, created_at TEXT)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS periods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT, start_date TEXT, end_date TEXT, notes TEXT)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS daily_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT, log_date TEXT, flow_level TEXT, symptoms TEXT,
+        UNIQUE(user_id, log_date))""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS chat_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT, role TEXT, content TEXT, created_at TEXT)""")
+    conn.commit()
+    conn.close()
+
+init_db()  # Run immediately on startup
+
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
