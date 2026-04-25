@@ -429,6 +429,7 @@ SYSTEM_PROMPT_SELF = f"""คุณคือ "พี่สาว" แชทบอ
 - สนทนาทั่วไป → ตอบปกติ ไม่ต้องมี JSON
 
 ตอบสั้นกระชับไม่เกิน 3-4 ประโยค อบอุ่น น่ารัก
+หลังจาก end_period สำเร็จแล้ว ห้ามถามเรื่องปริมาณเลือดอีก เพราะเมนส์หมดแล้ว
 วันนี้คือ {datetime.now().strftime("%Y-%m-%d")}"""
 
 SYSTEM_PROMPT_BF = f"""คุณคือ "พี่สาว" แชทบอทช่วยผู้ชายดูแลแฟนสาวในช่วงรอบเดือน
@@ -506,8 +507,12 @@ def process_claude_response(user_id, response_text):
 
         elif action == "end_period":
             end_date = data.get("date", None)
+            # ถ้าไม่มีวันที่เลย ถามยืนยัน
             if not end_date:
                 return "หมดวันนี้เลยนะคะ? บอกด้วยนะ จะได้บันทึกให้ถูกต้องเลยนะคะ 💙"
+            # แปลง "วันนี้" เป็นวันที่จริง
+            if end_date in ["วันนี้", "today"]:
+                end_date = datetime.now().strftime("%Y-%m-%d")
             try:
                 datetime.strptime(end_date, "%Y-%m-%d")
             except ValueError:
